@@ -63,8 +63,9 @@ jobs:
 
       - name: Deploy to Staging Server
         run: |
-          tar -czf deploy.tar.gz --exclude='node_modules' --exclude='.git' --exclude='*.tar.gz' --warning=no-file-changed .          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_STAGING_IP }}:~/
-          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_STAGING_IP }} << 'EOF'
+          tar -czf deploy.tar.gz --exclude='node_modules' --exclude='.git' . || true
+          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_TESTING_IP }}:~/
+          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_TESTING_IP }} << 'EOF'
             cd ~
             rm -rf app
             mkdir -p app
@@ -75,7 +76,6 @@ jobs:
             pm2 start index.js --name reactnode-app
             pm2 save
           EOF
-
   notify-success:
     needs: deploy-staging
     runs-on: ubuntu-latest
