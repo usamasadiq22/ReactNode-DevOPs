@@ -63,7 +63,7 @@ jobs:
 
       - name: Deploy to Testing Server
         run: |
-          tar -czf deploy.tar.gz --exclude='node_modules' --exclude='.git' .
+          tar -czf deploy.tar.gz --exclude='node_modules' --exclude='.git' --exclude='*.tar.gz' --warning=no-file-changed . 
           scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_TESTING_IP }}:~/
           ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_TESTING_IP }} << 'EOF'
             cd ~

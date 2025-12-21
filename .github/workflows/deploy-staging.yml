@@ -63,8 +63,7 @@ jobs:
 
       - name: Deploy to Staging Server
         run: |
-          tar -czf deploy.tar.gz --exclude='node_modules' --exclude='.git' .
-          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_STAGING_IP }}:~/
+          tar -czf deploy.tar.gz --exclude='node_modules' --exclude='.git' --exclude='*.tar.gz' --warning=no-file-changed .          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_STAGING_IP }}:~/
           ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_STAGING_IP }} << 'EOF'
             cd ~
             rm -rf app
