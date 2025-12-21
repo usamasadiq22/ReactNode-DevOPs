@@ -61,10 +61,14 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.EC2_TESTING_IP }} >> ~/.ssh/known_hosts
 
-      - name: Deploy to Testing Server
+      - name: Create deployment package
+        run: tar -czf deploy.tar.gz --exclude='node_modules' --exclude='.git' . || true
+
+      - name: Copy to server
+        run: scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_TESTING_IP }}:~/
+
+      - name: Deploy on server
         run: |
-          tar -czf deploy.tar.gz --exclude='node_modules' --exclude='.git' . || true
-          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_TESTING_IP }}:~/
           ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_TESTING_IP }} << 'EOF'
             cd ~
             rm -rf app
@@ -90,22 +94,17 @@ jobs:
           server_port: 587
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "✅ Testing Deployment Successful - ReactNode-DevOps"
+          subject: "Testing Deployment Successful - ReactNode-DevOps"
           to: ${{ secrets.QA_EMAIL }}
-          from: GitHub Actions <${{ secrets.SMTP_USERNAME }}>
+          from: GitHub Actions
           body: |
             Deployment to Testing environment was successful!
             
-            📋 Details:
-            - Repository: ${{ github.repository }}
-            - Branch: ${{ github.head_ref || github.ref_name }}
-            - Commit: ${{ github.sha }}
-            - Triggered by: ${{ github.actor }}
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.head_ref }}
+            Commit: ${{ github.sha }}
             
-            🔗 Access the deployed app:
-            http://${{ secrets.EC2_TESTING_IP }}:3000
-            
-            📝 Pull Request: ${{ github.event.pull_request.html_url }}
+            Access the app at: http://${{ secrets.EC2_TESTING_IP }}:3000
 
   notify-failure:
     needs: [build-and-test, deploy-testing]
@@ -120,11 +119,10 @@ jobs:
           server_port: 587
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "❌ Testing Deployment Failed - ReactNode-DevOps"
-          to: ${{ secrets.NOTIFY_EMAIL }},${{ secrets.QA_EMAIL }}
-          from: GitHub Actions <${{ secrets.SMTP_USERNAME }}>
+          subject: "Testing Deployment Failed - ReactNode-DevOps"
+          to: ${{ secrets.NOTIFY_EMAIL }}
+          from: GitHub Actions
           body: |
             Deployment to Testing environment failed!
             
-            🔗 View workflow run:
-            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
