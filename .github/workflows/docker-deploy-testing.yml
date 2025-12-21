@@ -145,3 +145,4 @@ jobs:
             Deployment to Testing environment failed!
             
             Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+# trigger reindex
