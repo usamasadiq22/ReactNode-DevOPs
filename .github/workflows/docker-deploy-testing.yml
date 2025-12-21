@@ -1,0 +1,149 @@
+name: Docker  Deploy to Testing
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  ECR_REPOSITORY: reactnode-app
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build React app
+        run: npm run build-react
+
+      - name: Run React unit tests
+        run: npm run test-react
+
+      - name: Run API tests
+        run: npm run test-API
+
+      - name: Run ESLint
+        run: npx eslint src/ --ext .js,.jsx --max-warnings=0 || true
+
+  build-and-push-image:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+  deploy-testing:
+    needs: build-and-push-image
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_TESTING_IP }} >> ~/.ssh/known_hosts
+
+
+      - name: Deploy to Testing Server
+        env:
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_TESTING_IP }} << EOF
+            # Login to ECR
+            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_REGISTRY
+            
+            # Stop and remove old container
+            docker stop reactnode-app 2>/dev/null || true
+            docker rm reactnode-app 2>/dev/null || true
+            
+            # Pull latest image
+            docker pull $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+            
+            # Run new container
+            docker run -d --name reactnode-app -p 3000:3000 --restart unless-stopped $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+            
+            # Cleanup old images
+            docker image prune -af
+          EOF
+
+  notify-success:
+    needs: deploy-testing
+    runs-on: ubuntu-latest
+    if: success()
+    
+    steps:
+      - name: Send Success Email to QA
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "Testing Deployment Successful - ReactNode-DevOps"
+          to: ${{ secrets.QA_EMAIL }}
+          from: GitHub Actions
+          body: |
+            Deployment to Testing environment was successful!
+            
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.head_ref }}
+            Commit: ${{ github.sha }}
+            
+            Access the app at: http://${{ secrets.EC2_TESTING_IP }}:3000
+
+  notify-failure:
+    needs: [build-and-test, build-and-push-image, deploy-testing]
+    runs-on: ubuntu-latest
+    if: failure()
+    
+    steps:
+      - name: Send Failure Email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "Testing Deployment Failed - ReactNode-DevOps"
+          to: ${{ secrets.NOTIFY_EMAIL }}
+          from: GitHub Actions
+          body: |
+            Deployment to Testing environment failed!
+            
+            Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+# trigger reindex
