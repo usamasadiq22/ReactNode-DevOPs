@@ -1,4 +1,4 @@
-name: Docker Deploy to Staging
+name: Docker Deploy to staging
 
 on:
   push:
