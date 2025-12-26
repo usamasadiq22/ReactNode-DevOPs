@@ -73,10 +73,21 @@ jobs:
     steps:
       - name: Setup SSH Key
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.EC2_TESTING_IP }} >> ~/.ssh/known_hosts
+         mkdir -p ~/.ssh
+         cat << 'EOF' > ~/.ssh/deploy_key
+         ${{ secrets.EC2_SSH_KEY }}
+         EOF
+         chmod 600 ~/.ssh/deploy_key
+         echo "=== Key file created ==="
+         ls -la ~/.ssh/deploy_key
+         echo "=== First line of key ==="
+         head -n 1 ~/.ssh/deploy_key
+         echo "=== Last line of key ==="
+         tail -n 1 ~/.ssh/deploy_key
+         echo "=== Running ssh-keyscan ==="
+         ssh-keyscan -H ${{ secrets.EC2_TESTING_IP }} >> ~/.ssh/known_hosts || echo "ssh-keyscan failed!"
+         echo "=== Known hosts ==="
+         cat ~/.ssh/known_hosts
 
 
       - name: Deploy to Testing Server
